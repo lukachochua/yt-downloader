@@ -7,13 +7,13 @@ use Symfony\Component\Process\Process;
 use Symfony\Component\Process\Exception\ProcessFailedException;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\Storage;
-use App\Jobs\DeleteDownloadedFile;
-
 
 class YTDownloadController extends Controller
 {
     public function download(Request $request)
     {
+        set_time_limit(600); // 600 seconds = 10 minutes
+
         $request->validate([
             'url' => 'required|url'
         ]);
@@ -40,8 +40,8 @@ class YTDownloadController extends Controller
         $command = "$ytDlpPath -f \"bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]\" $videoUrl --merge-output-format mp4 -o \"$outputFile\"";
 
         $process = Process::fromShellCommandline($command);
-        $process->setTimeout(600); // Set timeout to 10 minutes
-
+        $process->setTimeout(600); 
+        
         try {
             $process->mustRun();
 
@@ -51,11 +51,14 @@ class YTDownloadController extends Controller
                 return redirect()->back()->with('error', 'File not found after download.');
             }
 
-            // Return the file as a download response
-            return response()->download($downloadedFile)->deleteFileAfterSend();
+            // Create a URL for the downloaded file
+            $fileUrl = asset('storage/downloads/' . basename($downloadedFile));
 
-            // Dispatch the job to delete the file after 10 minutes (600 seconds)
-            DeleteDownloadedFile::dispatch($downloadedFile)->delay(now()->addMinutes(10));
+            // Flash success message to session with the download link
+            Session::flash('success', 'Your download is ready!');
+
+            // Return back with the download link and success message
+            return view('download')->with('fileUrl', $fileUrl);
         } catch (ProcessFailedException $exception) {
             return redirect()->back()->with('error', 'Download failed: ' . $exception->getMessage());
         }
